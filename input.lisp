@@ -13,7 +13,7 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
 (defun input (day)
   (declare  (type (integer 0 25) day))
   (make-pathname :defaults aoc-2022::*root-dir*
-                 :name (format NIL "day~a-input" day)
+                 :name (format NIL "input/day~a" day)
                  :type "txt"))
 
 (defun clean (line)
