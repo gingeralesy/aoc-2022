@@ -19,5 +19,6 @@
                (:file "day3")
                (:file "day4")
                (:file "day5")
-               (:file "day6"))
+               (:file "day6")
+               (:file "day7"))
   :depends-on (:cl-ppcre))
