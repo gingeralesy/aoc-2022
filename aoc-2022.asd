@@ -15,5 +15,6 @@
   :components ((:file "package")
                (:file "input")
                (:file "day1")
-               (:file "day2"))
+               (:file "day2")
+               (:file "day3"))
   :depends-on (:cl-ppcre))
