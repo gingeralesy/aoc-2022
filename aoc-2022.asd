@@ -14,5 +14,6 @@
   :serial T
   :components ((:file "package")
                (:file "input")
-               (:file "day1"))
+               (:file "day1")
+               (:file "day2"))
   :depends-on (:cl-ppcre))
