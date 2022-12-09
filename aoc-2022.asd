@@ -13,5 +13,6 @@
   :description "Advent of Code 2022"
   :serial T
   :components ((:file "package")
-               (:file "input"))
+               (:file "input")
+               (:file "day1"))
   :depends-on (:cl-ppcre))
