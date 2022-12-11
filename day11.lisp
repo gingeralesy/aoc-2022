@@ -54,10 +54,9 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
 
 (defun day11-puzzle1 (&optional (rounds 20) (worry 3))
   (let* ((monkeys (day11-parse-monkeys))
-         (lcm (loop with lcm = 1
-                    for monkey in (alexandria:hash-table-values monkeys)
-                    do (setf lcm (* lcm (gethash :test monkey)))
-                    finally (return lcm))))
+         (lcm 1))
+    (loop for monkey in (alexandria:hash-table-values monkeys)
+          do (setf lcm (* lcm (gethash :test monkey))))
     (dotimes (round rounds)
       (loop for monkey in (sort (alexandria:hash-table-values monkeys)
                                 #'< :key (lambda (x) (gethash :monkey x)))
