@@ -14,7 +14,7 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
   (declare  (type (integer 0 25) day))
   (make-pathname :defaults aoc-2022::*root-dir*
                  :name (format NIL "input/day~a" day)
-                 :type "txt"))
+                 :type "dat"))
 
 (defun clean (line)
   (when line
