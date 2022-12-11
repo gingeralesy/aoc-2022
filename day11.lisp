@@ -52,9 +52,13 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
           collect (cons (gethash :monkey monkey) monkey) into monkeys
           finally (return (when monkeys (alexandria:alist-hash-table monkeys))))))
 
-(defun day11-puzzle1 ()
-  (let ((monkeys (day11-parse-monkeys)))
-    (dotimes (round 20)
+(defun day11-puzzle1 (&optional (rounds 20) (worry 3))
+  (let* ((monkeys (day11-parse-monkeys))
+         (lcm (loop with lcm = 1
+                    for monkey in (alexandria:hash-table-values monkeys)
+                    do (setf lcm (* lcm (gethash :test monkey)))
+                    finally (return lcm))))
+    (dotimes (round rounds)
       (loop for monkey in (sort (alexandria:hash-table-values monkeys)
                                 #'< :key (lambda (x) (gethash :monkey x)))
             for operation = (gethash :operation monkey)
@@ -64,7 +68,7 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
             do (loop for item in (gethash :items monkey)
                      for left = (if (eql (second operation) :old) item (second operation))
                      for right = (if (eql (third operation) :old) item (third operation))
-                     for new = (floor (funcall (first operation) left right) 3)
+                     for new = (mod (floor (funcall (first operation) left right) worry) lcm)
                      for target = (gethash (if (= 0 (mod new test)) if-true if-false) monkeys)
                      for target-list = (gethash :items target)
                      do (setf (gethash :inspections monkey) (1+ (gethash :inspections monkey 0)))
@@ -81,3 +85,8 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                       (* (first inspections) (second inspections)))))))
 
 ;; 57348
+
+(defun day11-puzzle2 ()
+  (day11-puzzle1 10000 1))
+
+;; 14106266886
