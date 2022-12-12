@@ -133,3 +133,19 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
     (day12-astar map start end width height)))
 
 ;; 394
+
+(defun day12-puzzle2 ()
+  (multiple-value-bind (map start end width height)
+      (day12-parse-heightmap)
+    (setf (aref map (cdr start) (car start)) 1)
+    (let ((starts
+            (loop for y from 0 below height
+                  append (loop for x from 0 below width
+                               when (= 1 (aref map y x))
+                               collect (cons x y)))))
+      (loop for start in starts
+            for steps = (day12-astar map start end width height)
+            when steps
+            minimizing steps))))
+
+;; 388
