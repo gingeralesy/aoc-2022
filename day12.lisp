@@ -135,6 +135,7 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
 ;; 394
 
 (defun day12-puzzle2 ()
+  ;; TODO: Optimise this by making it remember past paths and distances from nodes.
   (multiple-value-bind (map start end width height)
       (day12-parse-heightmap)
     (setf (aref map (cdr start) (car start)) 1)
