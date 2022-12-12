@@ -125,12 +125,12 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                           (setf (aref f-score (cdr neighbour) (car neighbour))
                                 (+ tentative-g (heuristic end neighbour)))
                           (add-available neighbour)))
-            finally (return (when current (1- (length (find-path)))))))))
+            finally (return (when current (find-path)))))))
 
 (defun day12-puzzle1 ()
   (multiple-value-bind (map start end width height)
       (day12-parse-heightmap)
-    (day12-astar map start end width height)))
+    (1- (length (day12-astar map start end width height)))))
 
 ;; 394
 
@@ -138,13 +138,13 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
   (multiple-value-bind (map start end width height)
       (day12-parse-heightmap)
     (setf (aref map (cdr start) (car start)) 1)
-    (let ((starts
-            (loop for y from 0 below height
-                  append (loop for x from 0 below width
-                               when (= 1 (aref map y x))
-                               collect (cons x y)))))
+    (let ((starts (loop for y from 0 below height
+                        append (loop for x from 0 below width
+                                     when (= 1 (aref map y x))
+                                     collect (cons x y)))))
       (loop for start in starts
-            for steps = (day12-astar map start end width height)
+            for path = (day12-astar map start end width height)
+            for steps = (when path (1- (length path)))
             when steps
             minimizing steps))))
 
