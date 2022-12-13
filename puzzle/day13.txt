@@ -130,3 +130,5 @@ the second pair has index 2, and so on.) In the above example, the pairs in the 
 
 Determine which pairs of packets are already in the right order. What is the sum of the indices of
 those pairs?
+
+ ~ 6484
