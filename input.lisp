@@ -17,7 +17,8 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                  :type "dat"))
 
 (defun clean (line)
-  (when line
-    (multiple-value-bind (match groups)
-        (cl-ppcre:scan-to-strings *clean-re* line)
-      (when match (aref groups 0)))))
+  (if (stringp line)
+      (multiple-value-bind (match groups)
+          (cl-ppcre:scan-to-strings *clean-re* line)
+        (when match (aref groups 0)))
+      line))

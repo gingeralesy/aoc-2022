@@ -32,15 +32,19 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                  ((#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9) (push ch integer)))))
     (if stack (error "Missing ']'.") root)))
 
-(defun day13-parse-lists ()
+(defun day13-parse-lists (&key pairs)
   (with-open-file (stream (input 13) :if-does-not-exist :error)
-    (loop for first = (clean (read-line stream NIL))
-          for second = (clean (read-line stream NIL))
-          for third = (clean (read-line stream NIL))
-          while first
-          unless second do (error "Missing second half of the pair!")
-          unless (or (null third) (= 0 (length third))) do (error "Third line was not empty!")
-          collect (cons (day13-parse-list first) (day13-parse-list second)))))
+    (if pairs
+        (loop for first = (clean (read-line stream NIL))
+              for second = (clean (read-line stream NIL))
+              for third = (clean (read-line stream NIL))
+              while first
+              unless second do (error "Missing second half of the pair!")
+              unless (or (null third) (= 0 (length third))) do (error "Third line was not empty!")
+              collect (cons (day13-parse-list first) (day13-parse-list second)))
+        (loop for list = (clean (read-line stream NIL :eof))
+              until (eql :eof list)
+              when (< 1 (length list)) collect (day13-parse-list list)))))
 
 (defun day13-compare (left right)
   (declare (type list left right))
@@ -66,8 +70,19 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
     (not (eql (compare left right) :right))))
 
 (defun day13-puzzle1 ()
-  (loop for (left . right) in (day13-parse-lists)
+  (loop for (left . right) in (day13-parse-lists :pairs T)
         for i from 1
         when (day13-compare left right) sum i))
 
 ;; 6484
+
+(defun day13-puzzle2 ()
+  (loop with decoders = '(((2)) ((6)))
+        with value = 1
+        for packet in (sort (nconc (copy-list decoders) (day13-parse-lists))
+                            #'day13-compare)
+        for i from 1
+        when (find packet decoders :test #'equal) do (setf value (* value i))
+        finally (return value)))
+
+;; 19305
