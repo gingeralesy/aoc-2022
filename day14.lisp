@@ -8,7 +8,7 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
 
 (defparameter *day14-path-re* (cl-ppcre:create-scanner "\\b(\\d+),(\\d+)\\b"))
 
-(defun day14-build-map (coordinates)
+(defun day14-build-map (coordinates &optional floor)
   (let ((min (cons 999 0))
         (max (cons 0 0)))
     ;; FIXME: This is a bit silly but works.
@@ -18,9 +18,10 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                    when (< (car max) x) do (setf (car max) x)
                    when (< y (cdr min)) do (setf (cdr min) y)
                    when (< (cdr max) y) do (setf (cdr max) y)))
-    (let* ((width (1+ (- (car max) (car min))))
-           (height (1+ (- (cdr max) (cdr min))))
+    (let* ((width (+ (1+ (- (car max) (car min))) (if floor 2 0)))
+           (height (+ (1+ (- (cdr max) (cdr min))) (if floor 2 0)))
            (map (make-array (list height width) :element-type 'boolean :initial-element NIL)))
+      (when floor (decf (car min)))
       (loop for path in coordinates
             do (loop for cur = path then (cdr cur)
                      for start = (car cur)
@@ -38,9 +39,12 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                               then (if horizontal-p y (1+ y))
                               while (if horizontal-p (<= x (- to (car min))) (<= y (- to (cdr min))))
                               do (setf (aref map y x) T))))
+      (when floor
+        (loop for x from 0 below width
+              do (setf (aref map (- height 1) x) T)))
       (values map width height (car min) (cdr min)))))
 
-(defun day14-parse-map ()
+(defun day14-parse-map (&optional floor)
   (with-open-file (stream (input 14) :if-does-not-exist :error)
     (loop for line = (clean (read-line stream NIL))
           while line
@@ -50,7 +54,7 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                         when match collect (cons (parse-integer (aref groups 0))
                                                  (parse-integer (aref groups 1))))
           into coords
-          finally (return (day14-build-map coords)))))
+          finally (return (day14-build-map coords floor)))))
 
 (defun day14-puzzle1 ()
   (multiple-value-bind (map width height offset-x)
@@ -75,3 +79,33 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                      until (aref map y x))))))
 
 ;; 696
+
+(defun day14-puzzle2 ()
+  (multiple-value-bind (map width height offset-x)
+      (day14-parse-map T)
+    (labels ((out-p (x y)
+               (or (< x 0) (<= width x) (< y 0) (<= height y)))
+             (free-p (x y)
+               (not (or (out-p x y) (aref map y x)))))
+      (loop for x = (- 500 offset-x)
+            for y = 0
+            for i from 1
+            do (loop do (cond
+                          ((free-p x (1+ y))
+                           (incf y))
+                          ((free-p (1- x) (1+ y))
+                           (incf y)
+                           (decf x))
+                          ((free-p (1+ x) (1+ y))
+                           (incf y)
+                           (incf x))
+                          (T
+                           (when (or (out-p (1- x) (1+ y))
+                                     (out-p (1+ x) (1+ y)))
+                             (incf i (- (- height y) 2)))
+                           (setf (aref map y x) T)))
+                     unless (< 0 y)
+                     do (return-from day14-puzzle2 (values i map))
+                     until (aref map y x))))))
+
+;; 23610
