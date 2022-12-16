@@ -61,7 +61,7 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                (declare (type keyword target))
                (declare (type list passed))
                (let ((new-passed (append (list (gethash :valve current)) passed)))
-                 (unless (get target (gethash :table current)) ;; Already known?
+                 (unless (gethash target (gethash :table current)) ;; Already known?
                    (loop for tunnel in (gethash :tunnels current)
                          for tunnel-valve = (gethash tunnel valves)
                          for tunnel-table = (unless (find tunnel new-passed)
@@ -71,18 +71,20 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                                   for new = (gethash target tunnel-table)
                                   do (update-table current target tunnel (1+ (cdr new))))))
                  (the hash-table (gethash :table current)))))
-      (cdr (gethash to (seek from to NIL))))))
+      (let ((distance (cdr (gethash to (seek from to NIL)))))
+        (unless (< 0 distance) (error "Zero distance?"))
+        distance))))
 
 (defun day16-seek-route (valves current closed rate pressure time)
   (let ((current (etypecase current (keyword (gethash current valves)) (hash-table current))))
     (when (<= time 0) (error "No time!"))
     (unless closed
       (return-from day16-seek-route
-        (values (+ pressure (* rate time)) (list (gethash :valve current)))))
+        (values (+ pressure (* rate time)) NIL)))
     (loop with max-pressure = 0
           with max-route = NIL
           for option in closed
-          for distance = (day16-find-distance (gethash :valve current) option valves)
+          for distance = (day16-find-distance current option valves)
           for time-spent = (1+ distance)
           for new-time = (- time time-spent)
           for target = (gethash option valves)
@@ -93,7 +95,8 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                                       (day16-seek-route
                                        valves target (remove option closed)
                                        new-rate new-pressure new-time)
-                                      (values (+ pressure (* rate time)) NIL)))
+                                      (day16-seek-route
+                                       valves current NIL rate pressure time)))
           when (< max-pressure acquired)
           do (setf max-pressure acquired
                    max-route route)
@@ -108,3 +111,43 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
     (day16-seek-route valves :aa closed 0 0 30)))
 
 ;; 2124
+
+(defun day16-traverse (valves state-a state-b closed rate pressure time)
+  (when (<= time 0) (error "No time!"))
+  (unless closed
+    (let ((state (if (< (cdr state-a) (cdr state-b)) state-b state-a))
+          (pressure pressure)
+          (rate rate)
+          (time time))
+      (when (and (< 0 (cdr state)) (< (cdr state) time))
+        (incf pressure (* rate (cdr state)))
+        (decf time (cdr state))
+        (incf rate (gethash :rate (gethash (car state) valves))))
+      (return-from day16-traverse (+ pressure (* rate time)))))
+  (loop with (current . other) = (if (< (cdr state-a) (cdr state-b))
+                                     (cons state-a state-b)
+                                     (cons state-b state-a))
+        for option in closed
+        for new-closed = (remove option closed)
+        for distance = (day16-find-distance (car current) option valves)
+        for new = (cons option (1+ distance))
+        for target = (gethash (if (< (cdr new) (cdr other)) (car new) (car other)) valves)
+        for time-spent = (min (cdr new) (cdr other))
+        for new-time = (- time time-spent)
+        for new-rate = (+ rate (gethash :rate target))
+        for new-pressure = (+ pressure (* time-spent rate))
+        maximizing (if (< 0 new-time)
+                       (day16-traverse
+                        valves
+                        (cons (car new) (- (cdr new) time-spent))
+                        (cons (car other) (- (cdr other) time-spent))
+                        new-closed new-rate new-pressure new-time)
+                       (day16-traverse valves current other NIL rate pressure time))))
+
+(defun day16-puzzle2 ()
+  (let* ((valves (day16-parse-input))
+         (closed (loop for valve in (alexandria:hash-table-values valves)
+                       when (< 0 (gethash :rate valve)) collect (gethash :valve valve))))
+    (day16-traverse valves (cons :aa 0) (cons :aa 0)
+                    (sort closed #'> :key #'(lambda (x) (gethash :rate (gethash x valves))))
+                    0 0 26)))
