@@ -27,50 +27,66 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
     (loop with map = (make-hash-table)
           for (valve rate tunnels) = (day16-parse-line (read-line stream NIL))
           while valve
-          do (setf (gethash valve map) (list :valve valve :rate rate :tunnels tunnels))
+          do (setf (gethash valve map)
+                   (alexandria:plist-hash-table
+                    (list :valve valve
+                          :rate rate
+                          :tunnels tunnels
+                          :table (alexandria:plist-hash-table
+                                  (nconc
+                                   (list valve (cons valve 0))
+                                   (loop for tunnel in tunnels
+                                         appending (list tunnel (cons tunnel 1))))))))
           finally (return map))))
 
-(defun day16-distance (from to valves &optional passed)
-  (let* ((from (etypecase from (keyword (gethash from valves)) (list from)))
-         (to (etypecase to (keyword (gethash to valves)) (list to)))
-         (tunnels (getf from :tunnels))
-         (passed (append (list (getf from :valve)) passed)))
-    (when (find (getf to :valve) tunnels)
-      (return-from day16-distance 1))
-    (loop with min-distance = NIL
-          for tunnel in tunnels
-          for from-tunnel = (unless (find tunnel passed)
-                              (day16-distance tunnel to valves passed))
-          when (and from-tunnel (or (null min-distance) (< (1+ from-tunnel) min-distance)))
-          do (setf min-distance (1+ from-tunnel))
-          finally (return min-distance))))
-
-(defun day16-build-map (valves)
-  ;; TODO: This takes ten seconds. Find a way to optimise it.
-  (loop for valve in (alexandria:hash-table-values valves)
-        for map = (loop for target in (alexandria:hash-table-keys valves)
-                        for distance = (if (eql target (getf valve :valve))
-                                           0
-                                           (day16-distance valve target valves))
-                        append (list target distance))
-        do (setf (getf valve :map) map)
-        do (setf (gethash (getf valve :valve) valves) valve)))
+(defun day16-find-distance (from to valves)
+  (let* ((from (etypecase from (keyword (gethash from valves)) (hash-table from)))
+         (to (etypecase to (keyword to) (hash-table (gethash :valve to))))
+         (known (gethash to (gethash :table from))))
+    (when known (return-from day16-find-distance (cdr known)))
+    (labels ((update-table (current target through distance)
+               (declare (type hash-table current))
+               (declare (type keyword target through))
+               (declare (type number distance))
+               (let* ((table (gethash :table current))
+                      (old (gethash target table)))
+                 (when (or (null old) (< distance (cdr old)))
+                   (setf (gethash target table) (cons through distance))
+                   (setf (gethash :table current) table)
+                   (when old
+                     (update-table
+                      (gethash (car old) valves) target (gethash :valve current) (1+ distance))))))
+             (seek (current target passed)
+               (declare (type hash-table current))
+               (declare (type keyword target))
+               (declare (type list passed))
+               (let ((new-passed (append (list (gethash :valve current)) passed)))
+                 (unless (get target (gethash :table current)) ;; Already known?
+                   (loop for tunnel in (gethash :tunnels current)
+                         for tunnel-valve = (gethash tunnel valves)
+                         for tunnel-table = (unless (find tunnel new-passed)
+                                              (seek tunnel-valve target new-passed))
+                         when tunnel-table
+                         do (loop for target in (alexandria:hash-table-keys tunnel-table)
+                                  for new = (gethash target tunnel-table)
+                                  do (update-table current target tunnel (1+ (cdr new))))))
+                 (the hash-table (gethash :table current)))))
+      (cdr (gethash to (seek from to NIL))))))
 
 (defun day16-seek-route (valves current closed rate pressure time)
-  (let ((current (etypecase current (keyword (gethash current valves)) (list current))))
+  (let ((current (etypecase current (keyword (gethash current valves)) (hash-table current))))
     (when (<= time 0) (error "No time!"))
     (unless closed
       (return-from day16-seek-route
-        (values (+ pressure (* rate time)) (list (getf current :valve)))))
-    (loop with map = (getf current :map)
-          with max-pressure = 0
+        (values (+ pressure (* rate time)) (list (gethash :valve current)))))
+    (loop with max-pressure = 0
           with max-route = NIL
           for option in closed
-          for distance = (getf map option)
+          for distance = (day16-find-distance (gethash :valve current) option valves)
           for time-spent = (1+ distance)
           for new-time = (- time time-spent)
           for target = (gethash option valves)
-          for new-rate = (+ rate (getf target :rate))
+          for new-rate = (+ rate (gethash :rate target))
           for new-pressure = (+ pressure (* time-spent rate))
           for (acquired route) = (multiple-value-list
                                   (if (< 0 new-time)
@@ -81,13 +97,14 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
           when (< max-pressure acquired)
           do (setf max-pressure acquired
                    max-route route)
-          finally (return (values max-pressure (append (list (getf current :valve)) max-route))))))
+          finally (return (values
+                           max-pressure
+                           (append (list (gethash :valve current)) max-route))))))
 
 (defun day16-puzzle1 ()
   (let* ((valves (day16-parse-input))
          (closed (loop for valve in (alexandria:hash-table-values valves)
-                       when (< 0 (getf valve :rate)) collect (getf valve :valve))))
-    (day16-build-map valves)
+                       when (< 0 (gethash :rate valve)) collect (gethash :valve valve))))
     (day16-seek-route valves :aa closed 0 0 30)))
 
 ;; 2124
