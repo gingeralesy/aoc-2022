@@ -53,14 +53,14 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                  (when (or (null old) (< distance (cdr old)))
                    (setf (gethash target table) (cons through distance))
                    (setf (gethash :table current) table)
-                   (when old
+                   (when (and old (not (eql (car old) through)))
                      (update-table
                       (gethash (car old) valves) target (gethash :valve current) (1+ distance))))))
              (seek (current target passed)
                (declare (type hash-table current))
                (declare (type keyword target))
                (declare (type list passed))
-               (let ((new-passed (append (list (gethash :valve current)) passed)))
+               (let ((new-passed (nconc (list (gethash :valve current)) (copy-list passed))))
                  (unless (gethash target (gethash :table current)) ;; Already known?
                    (loop for tunnel in (gethash :tunnels current)
                          for tunnel-valve = (gethash tunnel valves)
@@ -112,6 +112,35 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
 
 ;; 2124
 
+;; FIXME: This doesn't work. A bit of an experiment. Didn't work earlier either though, so
+;;        I'm leaving it in. Fix it someday.
+
+(defun day16-route (from to valves)
+  (declare (type keyword to))
+  (declare (type hash-table valves))
+  (let ((from (etypecase from (keyword (gethash from valves)) (hash-table from))))
+    (when (< 0 (day16-find-distance from to valves))
+      (loop for current = from then (gethash through valves)
+            for table = (gethash :table current)
+            for through = (car (gethash to table))
+            collect through
+            until (eql to through)))))
+
+(defun day16-best (from closed valves time)
+  (loop with max = 0
+        with best = NIL
+        for option in closed
+        for valve = (gethash option valves)
+        for distance = (day16-find-distance from option valves)
+        for produces = (* (gethash :rate valve) (- time (1+ distance)))
+        when (or (null best) (< max produces))
+        do (setf max produces
+                 best option)
+        finally (return ;; Check for others along the way.
+                  (loop for alternative in (day16-route from best valves)
+                        until (find alternative closed)
+                        finally (return alternative)))))
+
 (defun day16-traverse (valves state-a state-b closed rate pressure time)
   (when (<= time 0) (error "No time!"))
   (unless closed
@@ -127,7 +156,8 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
   (loop with (current . other) = (if (< (cdr state-a) (cdr state-b))
                                      (cons state-a state-b)
                                      (cons state-b state-a))
-        for option in closed
+        repeat 1
+        for option = (day16-best (car current) closed valves time)
         for new-closed = (remove option closed)
         for distance = (day16-find-distance (car current) option valves)
         for new = (cons option (1+ distance))
