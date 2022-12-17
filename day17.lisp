@@ -68,6 +68,50 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
       (dotimes (col (array-dimension to 1))
         (setf (aref to (+ row offset) col) (aref from row col))))))
 
+(defstruct day17-history
+  (index 0 :type integer)
+  (length 0 :type integer)
+  (filled NIL :type boolean)
+  (array NIL :type (or null array)))
+
+(defun day17-make-history (length)
+  (let ((array (make-array length :element-type '(integer 0 64) :initial-element 0)))
+    (make-day17-history :length length :array array :index (1- length))))
+
+(defun day17-push-history (value history)
+  (let ((array (day17-history-array history))
+        (index (mod (1+ (day17-history-index history)) (day17-history-length history))))
+    (when (and (null (day17-history-filled history))
+               (= index (1- (day17-history-length history))))
+      (setf (day17-history-filled history) T))
+    (setf (aref array index) value)
+    (setf (day17-history-index history) index)))
+
+(defun day17-repeats-p (history)
+  (when (day17-history-filled history)
+    (let* ((array (day17-history-array history))
+           (length (day17-history-length history))
+           (third (/ length 3)))
+      (loop for pattern-length from 3 below third
+            for pattern = NIL
+            for found = T
+            do (loop for i from 0 below pattern-length
+                     for index = (- (day17-history-index history) i)
+                     when (< index 0) do (incf index length)
+                     do (push (aref array index) pattern))
+            do (loop while found
+                     for value in pattern
+                     for i from (1+ (- (day17-history-index history) (* 2 pattern-length)))
+                     for j from (- i pattern-length)
+                     for index-i = (if (< i 0) (+ i length) i)
+                     for index-j = (if (< j 0) (+ j length) j)
+                     unless (and (= value (aref array index-i))
+                                 (= value (aref array index-j)))
+                     do (setf found NIL))
+            when found do (return-from day17-repeats-p
+                            (values pattern pattern-length
+                                    (loop for value in pattern summing value)))))))
+
 (defun day17-puzzle1 (&optional (count 2022))
   (let* ((field-width 7)
          (field-height 1024)
@@ -76,7 +120,16 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
          (height 0)
          (all-moves (day17-parse-input))
          (next-move all-moves)
-         (next-rock *day17-rocks*))
+         (next-rock *day17-rocks*)
+         (max-heights (make-array 7 :element-type '(integer 0 *) :initial-element 0))
+         (cropped 0)
+         (history (day17-make-history (* 3
+                                         (if (= 0 (mod (length all-moves)
+                                                       (length *day17-rocks*)))
+                                             (length all-moves)
+                                             (* (length *day17-rocks*)
+                                                (length all-moves))))))
+         (repeat-found NIL))
     (flet ((move (&optional peek)
              (let ((move (car next-move)))
                (unless peek (setf next-move (or (cdr next-move) all-moves)))
@@ -100,9 +153,24 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
              (dotimes (row (array-dimension rock 0))
                (dotimes (col (array-dimension rock 1))
                  (when (aref rock row col)
-                   (when (aref field (+ y row) (+ x col))
-                     (error "Overlap! ~a,~a" x y))
-                   (setf (aref field (+ y row) (+ x col)) T))))))
+                   (let ((field-x (+ x col))
+                         (field-y (+ y row)))
+                     (when (aref field field-y field-x)
+                       (error "Overlap! ~a,~a" x y))
+                     (setf (aref field field-y field-x) T)
+                     (let ((col-height (- field-height field-y))
+                           (max-height (aref max-heights field-x)))
+                       (when (< max-height col-height)
+                         (setf (aref max-heights field-x) col-height))))))))
+           (crop (amount)
+             (loop for y from (1- field-height) downto 0
+                   do (dotimes (x field-width)
+                        (setf (aref field y x) (when (<= amount y)
+                                                 (aref field (- y amount) x)))))
+             (dotimes (i field-width)
+               (decf (aref max-heights i) amount))
+             (incf cropped amount)
+             (decf height amount)))
       (dotimes (i count)
         (let* ((rock (rock))
                (y (- field-height (+ height 3 (array-dimension rock 0))))
@@ -116,16 +184,40 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                 until (collides-p rock x y)
                 finally (progn
                           (land rock x (1- y))
-                          (setf height (max height (- field-height (1- y))))
+                          (let ((prev-height height))
+                            (setf height (max height (- field-height (1- y))))
+                            (day17-push-history (- height prev-height) history)
+                            (unless repeat-found
+                              (multiple-value-bind (pattern pattern-length delta)
+                                  (day17-repeats-p history)
+                                (when pattern
+                                  (setf repeat-found T)
+                                  (multiple-value-bind (repeats leftover)
+                                      (floor (- count (+ i 1)) pattern-length)
+                                    (let ((final (+ height cropped (* delta repeats))))
+                                      (when leftover
+                                        (loop repeat leftover
+                                              for value in pattern
+                                              do (incf final value)))
+                                      (return-from day17-puzzle1 final)))))))
                           (when (< (- field-height height) 16)
-                            (let* ((new-field-height (* 2 field-height))
-                                   (new-field (make-array (list new-field-height field-width)
-                                                          :element-type 'boolean
-                                                          :initial-element NIL)))
-                              (day17-copy-field field new-field)
-                              (setf field new-field)
-                              (setf field-height new-field-height))))))))
-    (day17-print-field field (max 6 height))
-    height))
+                            (cond
+                              ((find 0 max-heights)
+                               (let* ((new-field-height (* 2 field-height))
+                                      (new-field (make-array (list new-field-height field-width)
+                                                             :element-type 'boolean
+                                                             :initial-element NIL)))
+                                 (day17-copy-field field new-field)
+                                 (setf field new-field)
+                                 (setf field-height new-field-height)))
+                              (T
+                               (let ((to-crop (1- (loop for h across max-heights minimizing h))))
+                                 (crop to-crop))))))))))
+    (+ height cropped)))
 
 ;; 3224
+
+(defun day17-puzzle2 ()
+  (day17-puzzle1 1000000000000))
+
+;; 1595988538691
