@@ -34,4 +34,5 @@
                (:file "day18")
                (:file "day19"))
   :depends-on (:cl-ppcre
-               :alexandria))
+               :alexandria
+               :bordeaux-threads))
