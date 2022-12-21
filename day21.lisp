@@ -25,9 +25,13 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                                         (cl-ppcre:scan-to-strings
                                          *day21-operation-re* (aref groups 1)))
             for yell = (if op-match
-                           (list :operation (char (or (aref op-groups 1)
-                                                      (error "Invalid operation on line: ~a" line))
-                                                  0)
+                           (list :operation (ecase (char (or (aref op-groups 1)
+                                                             (error "Invalid operation on line: ~a" line))
+                                                         0)
+                                              (#\+ '+)
+                                              (#\- '-)
+                                              (#\* '*)
+                                              (#\/ '/))
                                  :monkeys (cons (or (monkeyfy (aref op-groups 0))
                                                     (error "Invalid left monkey on line: ~a" line))
                                                 (or (monkeyfy (aref op-groups 2))
@@ -51,11 +55,7 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
               (right (day21-monkey-value (cdr op-monkeys) monkeys))
               (numbersp (and (numberp left) (numberp right))))
          (if numbersp
-             (ecase op
-               (#\+ (+ left right))
-               (#\- (- left right))
-               (#\* (* left right))
-               (#\/ (/ left right)))
+             (funcall op left right)
              (list op left right)))))))
 
 (defun day21-puzzle1 ()
@@ -68,9 +68,9 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
   (declare (type (or list character) left))
   (declare (type number right))
   (when (and (characterp left) (char= left #\X))
-    (return-from day21-find-x (the number right)))
+    (return-from day21-find-x right))
   (destructuring-bind (op a b) left
-    (declare (type character op))
+    (declare (type symbol op))
     (declare (type (or character number list) a b))
     (unless (or (numberp a) (numberp b))
       (error "Neither side had a number for expression: ~a" left))
@@ -80,15 +80,15 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
       (day21-find-x
        expression
        (ecase op
-         (#\+ (- right number))
-         (#\- (if a-numberp (- (- right number)) (+ right number)))
-         (#\* (/ right number))
-         (#\/ (if a-numberp (/ number right) (* right number)))
-         (#\= number))))))
+         (+ (- right number))
+         (- (if a-numberp (- number right) (+ right number)))
+         (* (/ right number))
+         (/ (if a-numberp (/ number right) (* right number)))
+         (= number))))))
 
 (defun day21-puzzle2 ()
   (let ((monkeys (day21-parse-input)))
-    (setf (getf (gethash :root monkeys) :operation) #\=)
+    (setf (getf (gethash :root monkeys) :operation) '=)
     (setf (gethash :humn monkeys) (list :number #\X))
     (let ((root (day21-monkey-value :root monkeys)))
       (day21-find-x root))))
