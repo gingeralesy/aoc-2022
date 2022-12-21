@@ -10,31 +10,21 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
 (defparameter *day21-operation-re* (cl-ppcre:create-scanner "^(\\w+) ([+\\-*/]) (\\w+)$"))
 
 (defun day21-parse-input ()
-  (flet ((monkeyfy (name)
-           (when name
-             (intern (format NIL "~:@(~a~)" name) :keyword))))
+  (flet ((monkeyfy (name) (intern (format NIL "~:@(~a~)" name) :keyword)))
     (with-open-file (stream (input 21) :if-does-not-exist :error)
       (loop with monkeys = (make-hash-table)
             for line = (read-line stream NIL)
             while line
-            for (match groups) = (or (multiple-value-list
-                                      (cl-ppcre:scan-to-strings *day21-monkey-re* line))
-                                     (error "Invalid line: ~a" line))
+            for (match groups) = (multiple-value-list
+                                  (cl-ppcre:scan-to-strings *day21-monkey-re* line))
             for monkey = (monkeyfy (aref groups 0))
             for (op-match op-groups) = (multiple-value-list
                                         (cl-ppcre:scan-to-strings
                                          *day21-operation-re* (aref groups 1)))
             for yell = (if op-match
-                           (list :operation (ecase (char (aref op-groups 1) 0)
-                                              (#\+ '+)
-                                              (#\- '-)
-                                              (#\* '*)
-                                              (#\/ '/))
-                                 :monkeys (cons (or (monkeyfy (aref op-groups 0))
-                                                    (error "Invalid left monkey on line: ~a" line))
-                                                (or (monkeyfy (aref op-groups 2))
-                                                    (error "Invalid right monkey on line: ~a"
-                                                           line))))
+                           (list :operation (intern (aref op-groups 1) :cl)
+                                 :monkeys (cons (monkeyfy (aref op-groups 0))
+                                                (monkeyfy (aref op-groups 2))))
                            (list :number (parse-integer (aref groups 1))))
             do (setf (gethash monkey monkeys) yell)
             finally (return monkeys)))))
