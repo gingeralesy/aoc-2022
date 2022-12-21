@@ -38,22 +38,59 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
             finally (return monkeys)))))
 
 (defun day21-monkey-value (monkey monkeys)
+  (declare (type keyword monkey))
+  (declare (type hash-table monkeys))
   (let ((yell (gethash monkey monkeys)))
-    (unless yell (error "No such monkey: ~a" monkey))
+    (declare (type list yell))
     (ecase (car yell)
-      (:number (getf yell :number))
+      (:number (the (or character number) (getf yell :number)))
       (:operation
        (let* ((op-monkeys (getf yell :monkeys))
+              (op (getf yell :operation))
               (left (day21-monkey-value (car op-monkeys) monkeys))
-              (right (day21-monkey-value (cdr op-monkeys) monkeys)))
-         (ecase (getf yell :operation)
-           (#\+ (+ left right))
-           (#\- (- left right))
-           (#\* (* left right))
-           (#\/ (/ left right))))))))
+              (right (day21-monkey-value (cdr op-monkeys) monkeys))
+              (numbersp (and (numberp left) (numberp right))))
+         (if numbersp
+             (ecase op
+               (#\+ (+ left right))
+               (#\- (- left right))
+               (#\* (* left right))
+               (#\/ (/ left right)))
+             (list op left right)))))))
 
 (defun day21-puzzle1 ()
   (let ((monkeys (day21-parse-input)))
     (day21-monkey-value :root monkeys)))
 
 ;; 158731561459602
+
+(defun day21-find-x (left &optional (right 0))
+  (declare (type (or list character) left))
+  (declare (type number right))
+  (when (and (characterp left) (char= left #\X))
+    (return-from day21-find-x (the number right)))
+  (destructuring-bind (op a b) left
+    (declare (type character op))
+    (declare (type (or character number list) a b))
+    (unless (or (numberp a) (numberp b))
+      (error "Neither side had a number for expression: ~a" left))
+    (let* ((a-numberp (numberp a))
+           (number (if a-numberp a b))
+           (expression (if a-numberp b a)))
+      (day21-find-x
+       expression
+       (ecase op
+         (#\+ (- right number))
+         (#\- (if a-numberp (- (- right number)) (+ right number)))
+         (#\* (/ right number))
+         (#\/ (if a-numberp (/ number right) (* right number)))
+         (#\= number))))))
+
+(defun day21-puzzle2 ()
+  (let ((monkeys (day21-parse-input)))
+    (setf (getf (gethash :root monkeys) :operation) #\=)
+    (setf (gethash :humn monkeys) (list :number #\X))
+    (let ((root (day21-monkey-value :root monkeys)))
+      (day21-find-x root))))
+
+;; 3769668716709
