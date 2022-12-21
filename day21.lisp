@@ -25,9 +25,7 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                                         (cl-ppcre:scan-to-strings
                                          *day21-operation-re* (aref groups 1)))
             for yell = (if op-match
-                           (list :operation (ecase (char (or (aref op-groups 1)
-                                                             (error "Invalid operation on line: ~a" line))
-                                                         0)
+                           (list :operation (ecase (char (aref op-groups 1) 0)
                                               (#\+ '+)
                                               (#\- '-)
                                               (#\* '*)
