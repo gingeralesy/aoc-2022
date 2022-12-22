@@ -20,5 +20,5 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
   (if (stringp line)
       (multiple-value-bind (match groups)
           (cl-ppcre:scan-to-strings *clean-re* line)
-        (when match (aref groups 0)))
+        (or (when match (aref groups 0)) ""))
       line))
