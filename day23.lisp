@@ -211,101 +211,115 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
           into elves
           finally (return (values elves count width height)))))
 
+(defun day23-settle (tree direction elf settled)
+  ;; Unique value when expanded by a point no each direction.
+  (let* ((elf-x (x elf))
+         (elf-y (y elf))
+         (x (case direction
+              (:west (1- elf-x))
+              (:east (1+ elf-x))
+              (T elf-x)))
+         (y (case direction
+              (:north (1- elf-y))
+              (:south (1+ elf-y))
+              (T elf-y)))
+         (value (+ (+ (abs (1- (x tree))) x)
+                   (* (+ (abs (1- (y tree))) y) (+ 2 (width tree))))))
+    (setf (to-x elf) x)
+    (setf (to-y elf) y)
+    (unless settled
+      (return-from day23-settle (list (cons value elf))))
+    (when (< value (caar settled))
+      (return-from day23-settle (cons (cons value elf) settled)))
+    (loop for current = settled then next
+          for next = (cdr current)
+          while current
+          do (cond
+               ((= value (caar current))
+                (day23-stop (cdar current))
+                (day23-stop elf)
+                (return-from day23-settle settled))
+               ((and (< (caar current) value)
+                     (or (null next) (< value (caar next))))
+                (let ((new (cons (cons value elf) next)))
+                  (setf (cdr current) new)
+                  (return-from day23-settle settled)))))))
+
+(defun day23-step (elves tree directions)
+  (loop with settling = NIL
+        for elf in elves
+        for elf-x = (x elf)
+        for elf-y = (y elf)
+        for direction = (loop with nw = (day23-search tree (1- elf-x) (1- elf-y))
+                              with n = (day23-search tree elf-x (1- elf-y))
+                              with ne = (day23-search tree (1+ elf-x) (1- elf-y))
+                              with w = (day23-search tree (1- elf-x) elf-y)
+                              with e = (day23-search tree (1+ elf-x) elf-y)
+                              with sw = (day23-search tree (1- elf-x) (1+ elf-y))
+                              with s = (day23-search tree elf-x (1+ elf-y))
+                              with se = (day23-search tree (1+ elf-x) (1+ elf-y))
+                              for dir in directions
+                              for valid = (and
+                                           (or nw n ne w e sw s se)
+                                           (ecase dir
+                                             (:north (null (or nw n ne)))
+                                             (:south (null (or sw s se)))
+                                             (:west (null (or nw w sw)))
+                                             (:east (null (or ne e se)))))
+                              until valid
+                              finally (return (when valid dir)))
+        ;; when direction do (format T "~a,~a to ~(~a~)~%" elf-x elf-y direction)
+        when direction do (setf settling (day23-settle tree direction elf settling)))
+  (loop for elf in elves
+        for no-movement-p = (and (= (x elf) (to-x elf)) (= (y elf) (to-y elf)))
+        while no-movement-p
+        finally (when no-movement-p (return-from day23-step (values tree NIL))))
+  (day23-clear tree)
+  (loop for elf in elves
+        for x = (to-x elf)
+        for y = (to-y elf)
+        do (day23-move elf)
+        do (unless (day23-within tree x y)
+             (setf tree (day23-expand tree (cond
+                                             ((< x (x tree))
+                                              (if (< y (floor (height tree) 2))
+                                                  :top-left
+                                                  :bottom-left))
+                                             ((<= (right tree) x)
+                                              (if (< y (floor (height tree) 2))
+                                                  :top-right
+                                                  :bottom-right))
+                                             ((< y (y tree))
+                                              (if (< y (floor (width tree) 2))
+                                                  :top-left
+                                                  :top-right))
+                                             ((<= (bottom tree) y)
+                                              (if (< y (floor (width tree) 2))
+                                                  :bottom-left
+                                                  :bottom-right))))))
+        do (day23-insert tree elf))
+  (values tree T))
+
+(defun day23-rotate-directions (directions)
+  (let ((current directions)
+        (next (cdr directions)))
+    (setf (cdr current) NIL)
+    (setf (cdr (last next)) current)
+    next))
+
 (defun day23-puzzle1 (&optional (rounds 10))
   (multiple-value-bind (elves count width height)
       (day23-parse-input)
     (let ((tree (make-instance 'day23-quadtree :x 0 :y 0 :width width :height height
                                                :elves elves))
           (directions (list :north :south :west :east)))
-      (flet ((settle (direction elf settled)
-               ;; Unique value when expanded by a point no each direction.
-               (let* ((elf-x (x elf))
-                      (elf-y (y elf))
-                      (x (case direction
-                           (:west (1- elf-x))
-                           (:east (1+ elf-x))
-                           (T elf-x)))
-                      (y (case direction
-                           (:north (1- elf-y))
-                           (:south (1+ elf-y))
-                           (T elf-y)))
-                      (value (+ (+ (abs (1- (x tree))) x)
-                                (* (+ (abs (1- (y tree))) y) (+ 2 (width tree))))))
-                 (setf (to-x elf) x)
-                 (setf (to-y elf) y)
-                 (unless settled
-                   (return-from settle (list (cons value elf))))
-                 (when (< value (caar settled))
-                   (return-from settle (cons (cons value elf) settled)))
-                 (loop for current = settled then next
-                       for next = (cdr current)
-                       while current
-                       do (cond
-                            ((= value (caar current))
-                             (day23-stop (cdar current))
-                             (day23-stop elf)
-                             (return-from settle settled))
-                            ((and (< (caar current) value)
-                                  (or (null next) (< value (caar next))))
-                             (let ((new (cons (cons value elf) next)))
-                               (setf (cdr current) new)
-                               (return-from settle settled))))))))
-        (dotimes (round rounds)
-          ;; (format T "Round ~a~%" (1+ round))
-          (loop with settling = NIL
-                for elf in elves
-                for elf-x = (x elf)
-                for elf-y = (y elf)
-                for direction = (loop with nw = (day23-search tree (1- elf-x) (1- elf-y))
-                                      with n = (day23-search tree elf-x (1- elf-y))
-                                      with ne = (day23-search tree (1+ elf-x) (1- elf-y))
-                                      with w = (day23-search tree (1- elf-x) elf-y)
-                                      with e = (day23-search tree (1+ elf-x) elf-y)
-                                      with sw = (day23-search tree (1- elf-x) (1+ elf-y))
-                                      with s = (day23-search tree elf-x (1+ elf-y))
-                                      with se = (day23-search tree (1+ elf-x) (1+ elf-y))
-                                      for dir in directions
-                                      for valid = (and
-                                                   (or nw n ne w e sw s se)
-                                                   (ecase dir
-                                                     (:north (null (or nw n ne)))
-                                                     (:south (null (or sw s se)))
-                                                     (:west (null (or nw w sw)))
-                                                     (:east (null (or ne e se)))))
-                                      until valid
-                                      finally (return (when valid dir)))
-                ;; when direction do (format T "~a,~a to ~(~a~)~%" elf-x elf-y direction)
-                when direction do (setf settling (settle direction elf settling)))
-          (day23-clear tree)
-          (loop for elf in elves
-                for x = (to-x elf)
-                for y = (to-y elf)
-                do (day23-move elf)
-                do (unless (day23-within tree x y)
-                     (setf tree (day23-expand tree (cond
-                                                     ((< x (x tree))
-                                                      (if (< y (floor (height tree) 2))
-                                                          :top-left
-                                                          :bottom-left))
-                                                     ((<= (right tree) x)
-                                                      (if (< y (floor (height tree) 2))
-                                                          :top-right
-                                                          :bottom-right))
-                                                     ((< y (y tree))
-                                                      (if (< y (floor (width tree) 2))
-                                                          :top-left
-                                                          :top-right))
-                                                     ((<= (bottom tree) y)
-                                                      (if (< y (floor (width tree) 2))
-                                                          :bottom-left
-                                                          :bottom-right))))))
-                do (day23-insert tree elf))
-          ;; Rotate direction order
-          (let ((current directions)
-                (next (cdr directions)))
-            (setf directions next)
-            (setf (cdr current) NIL)
-            (setf (cdr (last directions)) current))))
+      (dotimes (round rounds)
+        ;; (format T "Round ~a: ~(~{~a~^, ~}~)~%" (1+ round) directions)
+        (multiple-value-bind (new-tree keep-going-p)
+            (day23-step elves tree directions)
+          (unless keep-going-p (return))
+          (setf tree new-tree))
+        (setf directions (day23-rotate-directions directions)))
       (loop for elf in elves
             minimizing (x elf) into left
             maximizing (1+ (x elf)) into right
@@ -314,3 +328,20 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
             finally (return (- (* (- right left) (- bottom top)) count))))))
 
 ;; 3877
+
+(defun day23-puzzle2 ()
+  (multiple-value-bind (elves count width height)
+      (day23-parse-input)
+    (declare (ignore count))
+    (let ((tree (make-instance 'day23-quadtree :x 0 :y 0 :width width :height height
+                                               :elves elves))
+          (directions (list :north :south :west :east)))
+      (loop for round from 1
+            ;; do (format T "Round ~a: ~(~{~a~^, ~}~)~%" (1+ round) directions)
+            do (multiple-value-bind (new-tree keep-going-p)
+                   (day23-step elves tree directions)
+                 (unless keep-going-p (return-from day23-puzzle2 round))
+                 (setf tree new-tree))
+            do (setf directions (day23-rotate-directions directions))))))
+
+;; 982
