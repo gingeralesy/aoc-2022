@@ -180,7 +180,7 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                           (set-f-score next-time neighbour-x neighbour-y
                                        (+ tentative-g (day24-distance neighbour-x neighbour-y end-x end-y)))
                           (add-available next-time neighbour-x neighbour-y)))
-            finally (return (when cur-time (find-path cur-time)))))))
+            finally (return (when cur-time (values (find-path cur-time) (blizzards (aref moments (1- (length moments)))))))))))
 
 (defun day24-puzzle1 ()
   (multiple-value-bind (blizzards count width height)
@@ -189,3 +189,17 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
     (day24-astar (cons 1 0) (cons (- width 2) (1- height)) width height blizzards)))
 
 ;; 253
+
+(defun day24-puzzle2 ()
+  (multiple-value-bind (blizzards count width height)
+      (day24-parse-input)
+    (unless (< 0 count) (error "No blizzards found."))
+    (multiple-value-bind (path-1 blizzards-1)
+        (day24-astar (cons 1 0) (cons (- width 2) (1- height)) width height blizzards)
+      (multiple-value-bind (path-2 blizzards-2)
+          (day24-astar (cons (- width 2) (1- height)) (cons 1 0) width height blizzards-1)
+        (+ (length path-1)
+           (length path-2)
+           (length (day24-astar (cons 1 0) (cons (- width 2) (1- height)) width height blizzards-2)))))))
+
+;; 794
