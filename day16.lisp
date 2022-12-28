@@ -40,6 +40,7 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
           finally (return map))))
 
 (defun day16-find-distance (from to valves)
+  ;; FIXME: The problem is here somewhere.
   (let* ((from (etypecase from (keyword (gethash from valves)) (hash-table from)))
          (to (etypecase to (keyword to) (hash-table (gethash :valve to))))
          (known (gethash to (gethash :table from))))
@@ -76,33 +77,44 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
         distance))))
 
 (defun day16-seek-route (valves current closed rate pressure time)
-  (let ((current (etypecase current (keyword (gethash current valves)) (hash-table current))))
+  (let ((current (etypecase current (keyword (gethash current valves)) (hash-table current)))
+        (viable NIL))
     (when (<= time 0) (error "No time!"))
-    (unless closed
-      (return-from day16-seek-route
-        (values (+ pressure (* rate time)) NIL)))
-    (loop with max-pressure = 0
-          with max-route = NIL
+    (loop with best-option = NIL
+          with best-output = 0
+          with best-distance = 0
           for option in closed
           for distance = (day16-find-distance current option valves)
+          when (< (1+ distance) time)
+          do (let* ((target (gethash option valves))
+                    (output (* (gethash :rate target) (- time distance 1))))
+               (when (< best-output output)
+                 (setf best-option target)
+                 (setf best-output output)
+                 (setf best-distance distance))
+               ;; Optimisation.
+               (when (or (<= best-output output) (< distance best-distance))
+                 (push (cons target distance) viable))))
+    (unless viable
+      (return-from day16-seek-route (values (+ pressure (* rate time)) NIL)))
+    (loop with max-pressure = 0
+          with max-route = NIL
+          for (target . distance) in viable
           for time-spent = (1+ distance)
           for new-time = (- time time-spent)
-          for target = (gethash option valves)
           for new-rate = (+ rate (gethash :rate target))
           for new-pressure = (+ pressure (* time-spent rate))
           for (acquired route) = (multiple-value-list
-                                  (if (< 0 new-time)
-                                      (day16-seek-route
-                                       valves target (remove option closed)
-                                       new-rate new-pressure new-time)
-                                      (day16-seek-route
-                                       valves current NIL rate pressure time)))
+                                  (day16-seek-route
+                                   valves target
+                                   (remove (gethash :valve target) closed)
+                                   new-rate new-pressure new-time))
           when (< max-pressure acquired)
           do (setf max-pressure acquired
                    max-route route)
           finally (return (values
                            max-pressure
-                           (append (list (gethash :valve current)) max-route))))))
+                           (nconc (list (gethash :valve current)) max-route))))))
 
 (defun day16-puzzle1 ()
   (let* ((valves (day16-parse-input))
