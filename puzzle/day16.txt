@@ -253,3 +253,5 @@ pressure.
 
 With you and an elephant working together for 26 minutes, what is the most pressure you could
 release?
+
+ ~ 2775
