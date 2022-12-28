@@ -27,6 +27,7 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
     (loop with map = (make-hash-table)
           for (valve rate tunnels) = (day16-parse-line (read-line stream NIL))
           while valve
+          when (gethash valve map) do (error "Duplicate valve: ~a" valve)
           do (setf (gethash valve map)
                    (alexandria:plist-hash-table
                     (list :valve valve
@@ -39,42 +40,41 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
                                          appending (list tunnel (cons tunnel 1))))))))
           finally (return map))))
 
+(defun day16-update-table (current target through distance valves)
+  (declare (type hash-table current))
+  (declare (type keyword target through))
+  (declare (type (integer 0 *) distance))
+  (let* ((table (gethash :table current))
+         (old (gethash target table)))
+    (when (or (null old) (< distance (cdr old)))
+      (setf (gethash target table) (cons through distance))
+      (when old
+        (day16-update-table
+         (gethash (car old) valves) target (gethash :valve current) (1+ distance) valves)))))
+
+(defun day16-seek (current target passed valves)
+  (declare (type hash-table current))
+  (declare (type keyword target))
+  (declare (type list passed))
+  (let ((new-passed (nconc (list (gethash :valve current)) (copy-list passed))))
+    (loop for tunnel in (gethash :tunnels current)
+          for tunnel-valve = (gethash tunnel valves)
+          for tunnel-table = (unless (find tunnel new-passed)
+                               (day16-seek tunnel-valve target new-passed valves))
+          when tunnel-table ;; Copy distance table
+          do (loop for target in (alexandria:hash-table-keys tunnel-table)
+                   for new = (gethash target tunnel-table)
+                   do (day16-update-table current target tunnel (1+ (cdr new)) valves)))
+    (the hash-table (gethash :table current))))
+
 (defun day16-find-distance (from to valves)
-  ;; FIXME: The problem is here somewhere.
   (let* ((from (etypecase from (keyword (gethash from valves)) (hash-table from)))
          (to (etypecase to (keyword to) (hash-table (gethash :valve to))))
-         (known (gethash to (gethash :table from))))
+         (known (gethash to (gethash :table from)))) ;; Quick return if we already know the distance.
     (when known (return-from day16-find-distance (cdr known)))
-    (labels ((update-table (current target through distance)
-               (declare (type hash-table current))
-               (declare (type keyword target through))
-               (declare (type number distance))
-               (let* ((table (gethash :table current))
-                      (old (gethash target table)))
-                 (when (or (null old) (< distance (cdr old)))
-                   (setf (gethash target table) (cons through distance))
-                   (setf (gethash :table current) table)
-                   (when (and old (not (eql (car old) through)))
-                     (update-table
-                      (gethash (car old) valves) target (gethash :valve current) (1+ distance))))))
-             (seek (current target passed)
-               (declare (type hash-table current))
-               (declare (type keyword target))
-               (declare (type list passed))
-               (let ((new-passed (nconc (list (gethash :valve current)) (copy-list passed))))
-                 (unless (gethash target (gethash :table current)) ;; Already known?
-                   (loop for tunnel in (gethash :tunnels current)
-                         for tunnel-valve = (gethash tunnel valves)
-                         for tunnel-table = (unless (find tunnel new-passed)
-                                              (seek tunnel-valve target new-passed))
-                         when tunnel-table
-                         do (loop for target in (alexandria:hash-table-keys tunnel-table)
-                                  for new = (gethash target tunnel-table)
-                                  do (update-table current target tunnel (1+ (cdr new))))))
-                 (the hash-table (gethash :table current)))))
-      (let ((distance (cdr (gethash to (seek from to NIL)))))
-        (unless (< 0 distance) (error "Zero distance?"))
-        distance))))
+    (let ((distance (cdr (gethash to (day16-seek from to NIL valves)))))
+      (unless (< 0 distance) (error "Zero distance?"))
+      distance)))
 
 (defun day16-seek-route (valves current closed rate pressure time)
   (let ((current (etypecase current (keyword (gethash current valves)) (hash-table current)))
