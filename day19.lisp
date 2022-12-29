@@ -35,12 +35,14 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
 (defun day19-make-state ()
   (list :robots (list :ore 1 :clay 0 :obsidian 0 :geode 0)
         :resources (list :ore 0 :clay 0 :obsidian 0 :geode 0)
-        :path NIL))
+        :path NIL
+        :best 0))
 
 (defun day19-copy-state (state new)
   (list :robots (copy-list (getf state :robots))
         :resources (copy-list (getf state :resources))
-        :path (nconc (copy-list (getf state :path)) (list (or new :wait)))))
+        :path (nconc (copy-list (getf state :path)) (list (or new :wait)))
+        :best (getf state :best)))
 
 (defun day19-incf (state type resource count)
   (let* ((list (or (getf state type) (error "Invalid type: ~a" type)))
@@ -73,6 +75,11 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
             do (setf state (day19-incf state :resources type (- count)))))
     state))
 
+(defun day19-max-geodes (state time)
+  (+ (getf (getf state :resources) :geode)
+     (* time (getf (getf state :robots) :geode))
+     (/ (* time (1- time)) 2)))
+
 (defun day19-mine (state blueprint time)
   (unless (< 1 time) ;; Are we done yet?
     (loop repeat time
@@ -103,11 +110,14 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
           with max-state = NIL
           for robot in maybe-build
           for new-state = (day19-build state robot blueprint)
+          when (<= (getf state :best) (day19-max-geodes new-state time))
           do (multiple-value-bind (geodes final-state)
                  (day19-mine new-state blueprint (1- time))
                (when (<= max-geodes geodes)
                  (setf max-geodes geodes)
                  (setf max-state final-state)))
+          when (< (getf state :best) max-geodes)
+          do (setf (getf state :best) max-geodes)
           finally (return (values max-geodes max-state)))))
 
 (defun day19-puzzle1 ()
@@ -118,11 +128,15 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
 ;; 1365
 
 (defun day19-puzzle2 ()
-  ;; TODO: This is *very* slow. Optimise it a bit more.
-  ;;       F.e. keep track of the best found result and abandon a branch if it cannot be reached.
-  (let ((blueprints (day19-parse-input)))
-    (* (day19-mine (day19-make-state) (first blueprints) 32)
-       (day19-mine (day19-make-state) (second blueprints) 32)
-       (day19-mine (day19-make-state) (third blueprints) 32))))
+  ;; TODO: This is *very* slow, even with multithreading. Optimise it a bit more.
+  (loop for blueprint in (subseq (day19-parse-input) 0 3)
+        collect (bt2:make-thread #'(lambda () (day19-mine (day19-make-state) blueprint 32)))
+        into threads
+        finally (return
+                  (loop with total = 1
+                        for thread in threads
+                        for value = (bt2:join-thread thread)
+                        do (setf total (* value total))
+                        finally (return total)))))
 
 ;; 4864

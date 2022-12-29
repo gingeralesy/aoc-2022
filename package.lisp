@@ -7,4 +7,5 @@
 (in-package #:cl-user)
 (defpackage #:aoc-2022
   (:use #:cl)
+  (:local-nicknames (:bt2 :bordeaux-threads))
   (:export))
