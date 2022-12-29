@@ -16,139 +16,113 @@ Author: Janne Pakarinen <gingeralesy@gmail.com>
           for (match groups) = (multiple-value-list
                                 (cl-ppcre:scan-to-strings *day19-blueprint-re* line))
           unless match do (error "Invalid line: ~a" line)
-          collect (list :blueprint (parse-integer (aref groups 0))
-                        :ore (list :ore (parse-integer (aref groups 1)))
-                        :clay (list :ore (parse-integer (aref groups 2)))
-                        :obsidian (list :ore (parse-integer (aref groups 3))
-                                        :clay (parse-integer (aref groups 4)))
-                        :geode (list :ore (parse-integer (aref groups 5))
-                                     :obsidian (parse-integer (aref groups 6)))))))
+          collect (let ((id (parse-integer (aref groups 0)))
+                        (ore->ore (parse-integer (aref groups 1)))
+                        (ore->clay (parse-integer (aref groups 2)))
+                        (ore->obsidian (parse-integer (aref groups 3)))
+                        (clay->obsidian (parse-integer (aref groups 4)))
+                        (ore->geode (parse-integer (aref groups 5)))
+                        (obsidian->geode (parse-integer (aref groups 6))))
+                    (list :blueprint id
+                          :ore (list :ore ore->ore)
+                          :clay (list :ore ore->clay)
+                          :obsidian (list :ore ore->obsidian :clay clay->obsidian)
+                          :geode (list :ore ore->geode :obsidian obsidian->geode)
+                          :max (list :ore (max ore->ore ore->clay ore->obsidian ore->geode)
+                                     :clay clay->obsidian
+                                     :obsidian obsidian->geode))))))
 
-(defun day19-puzzle1 (&optional (total-time 24) limit)
-  ;; FIXME: I tried to make this faster with threads. Now it crashes slime if I run it single thread.
-  (let ((blueprint)
-        (blueprint-max-costs)
-        (blueprint-min-costs)
-        (blueprint-total-costs)
-        (top-level-thread (bordeaux-threads:current-thread))
-        (thread-count (bordeaux-threads:make-semaphore :name "thread-count" :count 8)))
-    (labels ((copy-add-robots (robots &optional new)
-               (let ((new-robots (copy-list robots)))
-                 (when new
-                   (setf (getf new-robots new) (1+ (getf new-robots new 0))))
-                 new-robots))
-             (copy-subtract-resources (resources &optional costs)
-               (let ((new-resources (copy-list resources)))
-                 (when costs
-                   (loop for type in costs by #'cddr
-                         for cost in (cdr costs) by #'cddr
-                         for old = (getf new-resources type 0)
-                         when (< old cost) do (error "Cost of ~a is too high!" type)
-                         do (setf (getf new-resources type) (- old cost))))
-                 new-resources))
-             (craftables (resources)
-               (loop for robot in blueprint by #'cddr
-                     for costs in (cdr blueprint) by #'cddr
-                     when (loop for type in costs by #'cddr
-                                for cost in (cdr costs) by #'cddr
-                                for resource = (getf resources type)
-                                for can-do = (and resource (<= cost resource))
-                                while can-do
-                                finally (return can-do))
-                     collect robot))
-             (mine (time resources robots previous)
-               (unless (< 0 time)
-                 (getf resources :geode 0))
-               ;; 1. Figure out what things we //should// craft.
-               (let ((craftables (when (< 1 time) (craftables resources))))
-                 ;; TODO: How do I improve this?
-                 (loop for type in blueprint-max-costs by #'cddr
-                       for min-cost in (cdr blueprint-min-costs) by #'cddr
-                       for max-cost in (cdr blueprint-max-costs) by #'cddr
-                       for total-cost in (cdr blueprint-total-costs) by #'cddr
-                       for robot-count = (getf robots type 0)
-                       for current = (getf resources type 0)
-                       ;; when (and (find type craftables)
-                       ;;           (eql type previous))
-                       unless (or (null (find type craftables))
-                                  (eql type :geode)
-                                  (not (eql type previous))
-                                  (and (< (+ current robot-count) (* 2 max-cost))
-                                       (< robot-count 11)))
-                       ;; (and (< (+ current robot-count) (* 2 max-cost))
-                       ;;      (< robot-count (floor total-time 2))
-                       ;;      (< (- min-cost current (* time robot-count))
-                       ;;         (* time time)))
-                       do (setf craftables (delete type craftables)))
-                 (unless (and (null (cdr craftables)) (eql (car craftables) :geode))
-                   (if craftables
-                       (setf (cdr (last craftables)) (list NIL))
-                       (setf craftables (list NIL))))
-                 ;; 2. Mine resources.
-                 (loop for robot in robots by #'cddr
-                       for count in (cdr robots) by #'cddr
-                       do (setf (getf resources robot)
-                                (+ count (getf resources robot 0))))
-                 ;; 3. Mine more.
-                 (let ((threads)
-                       (max-geodes 0)
-                       (top-level-p (eql (bordeaux-threads:current-thread) top-level-thread)))
-                   (loop for to-craft in craftables
-                         for mine-function = #'(lambda ()
-                                                 (mine (1- time)
-                                                       (copy-subtract-resources
-                                                        resources (getf blueprint to-craft))
-                                                       (copy-add-robots robots to-craft)
-                                                       to-craft))
-                         for thread = (when (and top-level-p
-                                                 ;; (eql to-craft :no-such-thing)
-                                                 (< 1 (length craftables))
-                                                 (bordeaux-threads:wait-on-semaphore thread-count))
-                                        (handler-case
-                                            (bordeaux-threads:make-thread
-                                             #'(lambda ()
-                                                 (prog1 (funcall mine-function)
-                                                   (bordeaux-threads:signal-semaphore
-                                                    thread-count))))
-                                          (error (e)
-                                            (format T "Error creating thread: ~a~%" e)
-                                            (bordeaux-threads:signal-semaphore thread-count)
-                                            NIL)))
-                         do (if (bordeaux-threads:threadp thread)
-                                (push thread threads)
-                                (setf max-geodes (max max-geodes (funcall mine-function)))))
-                   (loop for thread in threads
-                         when (bordeaux-threads:threadp thread)
-                         do (let ((geodes (bordeaux-threads:join-thread thread)))
-                              (when (< max-geodes geodes)
-                                (setf max-geodes geodes))))
-                   max-geodes))))
-      (loop for input in (day19-parse-input)
-            for output = NIL
-            for i from 0
-            while (or (null limit) (< i limit))
-            do (setf blueprint (cddr input)
-                     blueprint-min-costs NIL
-                     blueprint-max-costs NIL
-                     blueprint-total-costs NIL)
-            do (loop for robot in blueprint by #'cddr
-                     for costs in (cdr blueprint) by #'cddr
-                     do (loop for type in costs by #'cddr
-                              for cost in (cdr costs) by #'cddr
-                              for old-min = (getf blueprint-min-costs type total-time)
-                              for old-max = (getf blueprint-max-costs type 0)
-                              for total = (+ (getf blueprint-total-costs type 0) cost)
-                              when (< cost old-min)
-                              do (setf (getf blueprint-min-costs type) cost)
-                              when (< old-max cost)
-                              do (setf (getf blueprint-max-costs type) cost)
-                              do (setf (getf blueprint-total-costs type) total)))
-            do (setf output (cons (cadr input) (mine total-time NIL (list :ore 1) NIL)))
-            do (format T "Blueprint ~a: ~a geodes~%" (car output) (cdr output))
-            summing (* (car output) (cdr output))))))
+(defun day19-make-state ()
+  (list :robots (list :ore 1 :clay 0 :obsidian 0 :geode 0)
+        :resources (list :ore 0 :clay 0 :obsidian 0 :geode 0)
+        :path NIL))
+
+(defun day19-copy-state (state new)
+  (list :robots (copy-list (getf state :robots))
+        :resources (copy-list (getf state :resources))
+        :path (nconc (copy-list (getf state :path)) (list (or new :wait)))))
+
+(defun day19-incf (state type resource count)
+  (let* ((list (or (getf state type) (error "Invalid type: ~a" type)))
+         (current (or (getf list resource) (error "Invalid resource: ~a" resource))))
+    (when (< (+ current count) 0) (error "Invalid decrement for ~a" resource))
+    (setf (getf list resource) (+ current count))
+    (setf (getf state type) list)
+    state))
+
+(defun day19-can-build-p (state robot blueprint)
+  (let ((costs (getf blueprint robot))
+        (resources (getf state :resources))
+        (robots (getf state :robots))
+        (max (getf blueprint :max)))
+    (when (< (getf robots robot) (getf max robot 99))
+      (loop for current = costs then (cddr current)
+            while current
+            for (type cost) = current
+            for can-do-p = (<= cost (getf resources type))
+            while can-do-p
+            finally (return can-do-p)))))
+
+(defun day19-build (state robot blueprint)
+  (let ((state (day19-copy-state state robot)))
+    (when robot
+      (setf state (day19-incf state :robots robot 1))
+      (loop for cost = (getf blueprint robot) then (cddr cost)
+            while cost
+            for (type count) = cost
+            do (setf state (day19-incf state :resources type (- count)))))
+    state))
+
+(defun day19-mine (state blueprint time)
+  (unless (< 1 time) ;; Are we done yet?
+    (loop repeat time
+          for path = (last (getf state :path)) then (cdr path)
+          do (setf (cdr path) (list :wait)))
+    (return-from day19-mine
+      (values (+ (getf (getf state :resources) :geode)
+                 (* time (getf (getf state :robots) :geode)))
+              state)))
+  ;; Check what we can build.
+  (let ((maybe-build (loop for type in '(:geode :obsidian :clay :ore)
+                           when (day19-can-build-p state type blueprint) collect type)))
+    ;; Do any mining we can.
+    (loop for robots = (getf state :robots) then (cddr robots)
+          while robots
+          for (robot count) = robots
+          when (< 0 count) do (setf state (day19-incf state :resources robot count)))
+    ;; Check if waiting would be worthwhile.
+    (if maybe-build
+        (loop for type in '(:geode :obsidian :clay :ore)
+              for couldnt-before-p = (and (not (find type maybe-build))
+                                          (day19-can-build-p state type blueprint))
+              when couldnt-before-p do (push NIL maybe-build)
+              until couldnt-before-p)
+        (push NIL maybe-build))
+    ;; Loop and recurse.
+    (loop with max-geodes = 0
+          with max-state = NIL
+          for robot in maybe-build
+          for new-state = (day19-build state robot blueprint)
+          do (multiple-value-bind (geodes final-state)
+                 (day19-mine new-state blueprint (1- time))
+               (when (<= max-geodes geodes)
+                 (setf max-geodes geodes)
+                 (setf max-state final-state)))
+          finally (return (values max-geodes max-state)))))
+
+(defun day19-puzzle1 ()
+  (loop for blueprint in (day19-parse-input)
+        for id = (getf blueprint :blueprint)
+        summing (* id (day19-mine (day19-make-state) blueprint 24))))
 
 ;; 1365
 
 (defun day19-puzzle2 ()
-  ;; FIXME: Currently I interrupt the process and calculate it by hand.
-  (day19-puzzle1 32 3))
+  ;; TODO: This is *very* slow. Optimise it a bit more.
+  ;;       F.e. keep track of the best found result and abandon a branch if it cannot be reached.
+  (let ((blueprints (day19-parse-input)))
+    (* (day19-mine (day19-make-state) (first blueprints) 32)
+       (day19-mine (day19-make-state) (second blueprints) 32)
+       (day19-mine (day19-make-state) (third blueprints) 32))))
+
+;; 4864
